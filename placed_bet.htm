@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html>
+<head>
+	<title>Journey analysis</title>
+	<style type="text/css">
+		body {
+			font: 0.95em sans-serif;
+		}
+		#title {
+			font-weight: normal;
+			font-size: 3em;
+		}
+		nav ul {
+			margin: 0;
+			padding: 0;
+		}
+		nav li {
+			list-style: none;
+			float: left;
+			margin: 0.5em;
+			padding: 0;
+		}
+		nav a, nav a:visited {
+			color: #36F;
+			text-decoration: underline;
+		}
+		nav a:hover {
+			text-decoration: none;
+		}
+		header {
+			clear: left;
+			padding-top: 1em;
+		}
+		path:hover {
+			stroke: #000;
+		}
+
+	</style>
+</head>
+<body>
+<h1 id="title">Journeys</h1>
+<nav>
+	<ul>
+		<li><a href="./index.htm">1 hour</a></li>
+		<li><a href="./2_hours.htm">2 hours</a></li>
+		<li><a href="./higher_grain.htm">Higher grain</a></li>
+		<li><a href="./5_steps.htm">5 steps</a></li>
+		<li><a href="./placed_bet.htm"><strong>Placed bet</strong></a></li>
+		<li><a href="./target_to_target.htm">Target to target</a></li>
+		<li><a href="./10_steps.htm">10 steps</a></li>
+	</ul>
+</nav>
+<header>
+	<h1>Monday 5 April 10am - 11am</h1>
+	<p>Using placed bet as a target event</p>
+</header>
+<section></section>
+<pre>
+-- Order the hits in sequence and relabel when it makes sense
+with sequence as (
+SELECT
+    visitid as visit,
+    case
+      when hit_eventinfo_eventcategory='navigation' and hit_eventinfo_eventaction='navigated to' then 'navigation||' || hit_eventinfo_eventlabel
+      when hit_eventinfo_eventcategory='media' and hit_eventinfo_eventaction IN ('played video','saw video') then 'media||watched video'
+      when hit_eventinfo_eventcategory='betting' and hit_eventinfo_eventaction IN ('submitted bet','placed_bet') then hit_eventinfo_eventcategory || '||placed bet'
+      when hit_eventinfo_eventcategory='betting' then hit_eventinfo_eventcategory || '||' || hit_eventinfo_eventaction
+      when hit_eventinfo_eventcategory='payments' and hit_eventinfo_eventaction like '%deposit%' then 'payments||' || hit_eventinfo_eventaction
+      else hit_eventinfo_eventcategory || '||' || hit_eventinfo_eventcategory
+    end as event,
+    ROW_NUMBER() OVER (PARTITION BY visitid ORDER BY hit_timestamp) as seq
+  FROM omni_ga.vw_site_visit_hit_bi
+  WHERE (brand ILIKE 'PP') AND (hit_timestamp >= (TIMESTAMP '2021-04-05 10:00:00') AND hit_timestamp < (TIMESTAMP '2021-04-05 11:00:00'))
+    AND hit_eventinfo_eventcategory IS NOT NULL AND hit_eventinfo_eventcategory NOT IN ('interface')
+    -- AND visitid = 1617534021
+)
+-- Group the events that occur next to each other in the sequence, but NOT the same events that occur later on
+,grouped as (
+  select visit, event, min(seq) as seq, count(grp) as num_occurances_together
+  from (
+    select t.*,
+            (select count(*)
+             from sequence as t2
+             where t2.seq < t.seq and t2.event <> t.event and t2.visit=t.visit
+            ) as grp
+        from sequence as t
+    )
+  group by visit, event, grp
+  order by 3
+),
+-- Transpose into a table showing the previous 3 events that happened upto the target event
+journey as (
+  SELECT
+  visit,
+  LAG(event,3) OVER (PARTITION BY visit ORDER BY seq) as event_minus_3,
+  LAG(event,2) OVER (PARTITION BY visit ORDER BY seq) as event_minus_2,
+  LAG(event,1) OVER (PARTITION BY visit ORDER BY seq) as event_minus_1,
+  event as target_event
+  from grouped
+)
+-- Group the journeys together to show the most popular
+SELECT event_minus_3, event_minus_2, event_minus_1, target_event, count(1) as occurances
+from journey
+-- Example usage to look for events that led up to a bet being placed
+where target_event='betting||placed bet'
+group by 1,2,3,4
+having occurances > 1000
+order by occurances desc
+
+</pre>
+<script src="https://d3js.org/d3.v6.min.js"></script>
+<script src="https://unpkg.com/d3-sankey@0"></script>
+<script>
+
+var color = d3.scaleOrdinal(d3.schemeCategory10);
+var width = 1500;
+var height = 800;
+
+var svg = d3.select('section').append("svg")
+	.attr("width", width)
+	.attr("height", height);
+
+var sankey = d3.sankey()
+	.nodeId(function(d) { return d.id; })
+	.nodeWidth(36)
+	.nodePadding(40)
+	.extent([[1, 5], [width - 1, height - 5]])
+	.nodeAlign(d3.sankeyJustify);
+
+var placed_bet = "./placed_bet.csv"; // 1 hour of data
+
+function links_upsert(links_array, new_item) {
+	var already_has_new_item = false;
+
+	links_array.forEach(function (l) {
+		if (l.source===new_item.source && l.target===new_item.target) {
+			already_has_new_item = true;
+			l.value += new_item.value;
+		}
+	});
+
+	if (!already_has_new_item) {
+		links_array.push(new_item);
+	}
+
+	return links_array;
+}
+
+d3.dsv(",", placed_bet).then(function(data) {
+	// console.log(data);
+
+	var nodes = [];
+	var links = [];
+
+	data.forEach(function (d) {
+		if (!nodes.includes('-3 ' + d.event_minus_3)) {
+			nodes.push('-3 ' + d.event_minus_3);
+		}
+		if (!nodes.includes('-2 ' + d.event_minus_2)) {
+			nodes.push('-2 ' + d.event_minus_2);
+		}
+		if (!nodes.includes('-1 ' + d.event_minus_1)) {
+			nodes.push('-1 ' + d.event_minus_1);
+		}
+		if (!nodes.includes('0 ' + d.target_event)) {
+			nodes.push('0 ' + d.target_event);
+		}
+			
+		links_upsert(links, { source: '-3 ' + d.event_minus_3, target: '-2 ' + d.event_minus_2, value: +d.occurances });
+		links_upsert(links, { source: '-2 ' + d.event_minus_2, target: '-1 ' + d.event_minus_1, value: +d.occurances });
+		links_upsert(links, { source: '-1 ' + d.event_minus_1, target: '0 ' + d.target_event, value: +d.occurances });
+	});
+
+	// Turn nodes into objects
+	nodes = nodes.map(function (n) { return { id: n, name: n.split('||')[1], category: n.split('||')[0].replace(/^-?\d /,'') }; });
+
+	// TODO Sum links when they are the same
+	
+
+	console.log(nodes);
+	// console.log(links);
+
+	var graph = sankey({
+		nodes: nodes,
+		links: links
+	});
+
+	// Nodes
+	svg.append("g")
+		.attr("stroke", "#000")
+		.selectAll("rect")
+		.data(graph.nodes)
+		.join("rect")
+			.attr("x", function(d) { return d.x0; })
+			.attr("y", function(d) { return d.y0; })
+			.attr("height", function(d) { return d.y1 - d.y0; })
+			.attr("width", function(d) { return d.x1 - d.x0; })
+			.attr("fill", function(d) { return color(d.category); })
+			.append("title")
+			.text(function(d) { return d.name; });
+
+	// Links
+	var link = svg.append("g")
+		.attr("fill", "none")
+		.attr("stroke-opacity", 0.5)
+		.selectAll("g")
+		.data(graph.links)
+		.join("g")
+		.style("mix-blend-mode", "multiply");
+
+	link.append("path")
+		.attr("d", d3.sankeyLinkHorizontal())
+		.attr("stroke", function (d) { return color(d.source.category); })
+		.attr("stroke-width", function(d) { return Math.max(1, d.width); });
+
+	link.append("title")
+		.text(function(d) { return `${d.source.name} > ${d.target.name}\n${d.value}`; });
+
+	// Node labels
+	svg.append("g")
+		.attr("font-family", "sans-serif")
+		.attr("font-size", '0.8em')
+		.selectAll("text")
+		.data(graph.nodes)
+		.join("text")
+			.attr("x", function(d) { return d.x0 < width / 2 ? d.x1 + 6 : d.x0 - 6; })
+			.attr("y", function(d) { return (d.y1 + d.y0) / 2; })
+			.attr("dy", "0.35em")
+			.attr("text-anchor", function(d) { return d.x0 < width / 2 ? "start" : "end"; })
+			.text(function(d) { return d.category + ' - ' + d.name; });
+
+});
+
+
+</script>
+
+</body>
+</html>
