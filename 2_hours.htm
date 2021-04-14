@@ -51,11 +51,16 @@
 	</ul>
 </nav>
 <header>
-	<h1>Monday 5 April 10am - 12am</h1>
-	<p>2 hours worth of data any different to 1 hour?</p>
+	<h1>3 steps before &quot;target&quot; event - 2 hours of data</h1>
+	<ul>
+		<li>Monday 5 April 10am - 12am</li>
+		<li>Top ~40 journeys for the above 2 hours.</li>
+		<li>The visits are kept intact.</li>
+		<li>This demo can be considered crude as it forces events into specific places, instead of recognising an event in step 2 is the same as the  same event in  step 1.</li>
+	</ul>
 </header>
 <section></section>
-<pre>
+<pre><code class="sql">
 -- Order the hits in sequence and relabel when it makes sense
 with sequence as (
 SELECT
@@ -106,8 +111,7 @@ from journey
 group by 1,2,3,4
 having occurances > 2000
 order by occurances desc
-
-</pre>
+</code></pre>
 <script src="https://d3js.org/d3.v6.min.js"></script>
 <script src="https://unpkg.com/d3-sankey@0"></script>
 <script>
@@ -233,6 +237,8 @@ d3.dsv(",", two_hours).then(function(data) {
 
 
 </script>
-
+<link rel="stylesheet" href="//cdnjs.cloudflare.com/ajax/libs/highlight.js/10.7.2/styles/googlecode.min.css" />
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/10.7.2/highlight.min.js"></script>
+<script>hljs.highlightAll();</script>
 </body>
 </html>

@@ -51,11 +51,14 @@
 	</ul>
 </nav>
 <header>
-	<h1>Monday 5 April 10am - 11am</h1>
-	<p>From <em>race time selector</em> to <em>placed bet</em></p>
+	<h1>Target to target</h1>
+	<ul>
+		<li>Monday 5 April 10am - 11am</li>
+		<li>From <em>race time selector</em> to <em>placed bet</em></li>
+	</ul>
 </header>
 <section></section>
-<pre>
+<pre><code class="sql">
 -- Order the hits in sequence and relabel when it makes sense
 with sequence as (
 SELECT
@@ -108,7 +111,7 @@ from journey
 group by 1,2,3,4,5,6
 having occurances > 500
 order by occurances desc
-</pre>
+</code></pre>
 <script src="https://d3js.org/d3.v6.min.js"></script>
 <script src="https://unpkg.com/d3-sankey@0"></script>
 <script>
@@ -246,6 +249,8 @@ d3.dsv(",", five_steps).then(function(data) {
 
 
 </script>
-
+<link rel="stylesheet" href="//cdnjs.cloudflare.com/ajax/libs/highlight.js/10.7.2/styles/googlecode.min.css" />
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/10.7.2/highlight.min.js"></script>
+<script>hljs.highlightAll();</script>
 </body>
 </html>
